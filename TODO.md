@@ -36,5 +36,5 @@ supervise long-running services. All three sit on the declarative-tools substrat
 - [ ] **Revert package activation on uninstall** — install merges activation additively; uninstall removes files + the manifest package ref but leaves activation behind (e.g. a stale `PYTHONHOME`). Needs per-package activation provenance (likely stored in the install record) to subtract safely _(small–medium)_
 
 - [ ] **Real registry auth** for pull *and* push (tokens / docker-config; not just anonymous/basic) _(medium)_
-- [ ] **README + packaging guide** — quickstart for the relocatable-envs-as-OCI model and how to build/push a package _(small–medium)_
+- [x] **README + packaging guide** — `README.md` (overview, install, quickstart, command reference) and `docs/GUIDE.md` (day-to-day walkthrough + packaging). Published with the v0.1.0 GitHub release.
 - [ ] **`update` command** — re-pull a newer version of an installed package _(small–medium)_
