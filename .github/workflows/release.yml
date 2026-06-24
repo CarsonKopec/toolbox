@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin: toolbox
+            asset: toolbox-${{ github.ref_name }}-x86_64-linux
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin: toolbox
+            asset: toolbox-${{ github.ref_name }}-aarch64-macos
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: toolbox.exe
+            asset: toolbox-${{ github.ref_name }}-x86_64-windows.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install TLS build deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage binary
+        shell: bash
+        run: cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "${{ matrix.asset }}"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
