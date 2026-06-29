@@ -36,6 +36,6 @@ supervise long-running services. All three sit on the declarative-tools substrat
 
 - [x] **Revert package activation/tools on uninstall** — the install record now stores what each package contributed; uninstall subtracts its activation + tools, skipping anything another installed package still provides or the user has since changed.
 
-- [ ] **Real registry auth** for pull *and* push (tokens / docker-config; not just anonymous/basic) _(medium)_
+- [x] **Real registry auth** — pull and push source credentials from the Docker config (`~/.docker/config.json` / `$DOCKER_CONFIG`): `auths` (base64 or plain) and credential helpers (`credHelpers`/`credsStore`). `TOOLBOX_REGISTRY_*` env vars override; anonymous fallback. So `docker login` just works.
 - [x] **README + packaging guide** — `README.md` (overview, install, quickstart, command reference) and `docs/GUIDE.md` (day-to-day walkthrough + packaging). Published with the v0.1.0 GitHub release.
 - [x] **`update` command** — `toolbox update [pkg] -e <env>` re-installs one or all packages from their recorded source (`file://` dir or registry ref)

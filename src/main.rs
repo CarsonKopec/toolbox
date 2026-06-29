@@ -5,6 +5,7 @@ mod activate;
 mod activation_vars;
 mod cli;
 mod commands;
+mod dockercfg;
 mod env;
 mod installed;
 mod manifest;

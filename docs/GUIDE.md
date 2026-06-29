@@ -131,8 +131,10 @@ A **package** is a tree that overlays onto an env: `windows/`, `linux/`, `macos/
 3. Share it, either way:
 
    ```powershell
-   # Push to an OCI registry (set credentials for non-anonymous registries)
-   $env:TOOLBOX_REGISTRY_USERNAME = "me"; $env:TOOLBOX_REGISTRY_PASSWORD = "..."
+   # Push to an OCI registry. ToolBox uses your `docker login` credentials
+   # (~/.docker/config.json, including credential helpers); a one-off override
+   # is available via TOOLBOX_REGISTRY_USERNAME / _PASSWORD.
+   docker login ghcr.io          # once, with a PAT (write:packages)
    toolbox push .\pytools ghcr.io/me/pytools:1.0.0
 
    # ...or just hand someone the directory
@@ -155,4 +157,4 @@ ToolBox's manifests and registry are written in [TOML+](https://github.com/Carso
 
 - **`toolbox activate` printed a script instead of doing anything** — the shell hook isn't loaded; add the `shellenv` line to your profile (step 1) and restart the shell.
 - **A moved env's tools fail** — run `toolbox verify <env>`; if it reports drift, `toolbox activate` (or `toolbox relocate <env>`) re-patches it.
-- **Anonymous push rejected** — set `TOOLBOX_REGISTRY_USERNAME` / `TOOLBOX_REGISTRY_PASSWORD`; most registries reject anonymous pushes.
+- **Anonymous push rejected** — run `docker login <registry>` (ToolBox reuses those credentials), or set `TOOLBOX_REGISTRY_USERNAME` / `TOOLBOX_REGISTRY_PASSWORD` for a one-off. Most registries reject anonymous pushes.

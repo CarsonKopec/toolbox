@@ -69,14 +69,13 @@ pub fn pull(reference: &str, dest: &Path) -> Result<PullSummary> {
 
 async fn pull_async(reference: &str, dest: &Path) -> Result<PullSummary> {
     use oci_client::client::ClientConfig;
-    use oci_client::secrets::RegistryAuth;
     use oci_client::{Client, Reference};
 
     let r: Reference = reference
         .parse()
         .with_context(|| format!("parsing OCI reference {reference:?}"))?;
     let client = Client::new(ClientConfig::default());
-    let auth = RegistryAuth::Anonymous;
+    let auth = resolve_auth(&r);
 
     let (manifest, _digest) = client
         .pull_image_manifest(&r, &auth)
@@ -237,7 +236,7 @@ async fn push_async(src: &Path, reference: &str, opts: &PushOptions) -> Result<P
     let config = Config::new(config_data, CONFIG_MEDIA_TYPE.to_string(), None);
 
     let client = Client::new(ClientConfig::default());
-    let auth = push_auth();
+    let auth = resolve_auth(&r);
 
     let resp = client
         .push(&r, &[layer], config, &auth, None)
@@ -337,15 +336,26 @@ fn build_layer(src: &Path) -> Result<Vec<u8>> {
     encoder.finish().context("finalizing zstd stream")
 }
 
-fn push_auth() -> oci_client::secrets::RegistryAuth {
+/// Resolve credentials for a reference's registry. Precedence: the explicit
+/// `TOOLBOX_REGISTRY_USERNAME`/`_PASSWORD` override, then the Docker config
+/// (`docker login` credentials, incl. credential helpers), then anonymous.
+fn resolve_auth(reference: &oci_client::Reference) -> oci_client::secrets::RegistryAuth {
     use oci_client::secrets::RegistryAuth;
-    match (
+
+    if let (Ok(u), Ok(p)) = (
         std::env::var("TOOLBOX_REGISTRY_USERNAME"),
         std::env::var("TOOLBOX_REGISTRY_PASSWORD"),
     ) {
-        (Ok(u), Ok(p)) if !u.is_empty() => RegistryAuth::Basic(u, p),
-        _ => RegistryAuth::Anonymous,
+        if !u.is_empty() {
+            return RegistryAuth::Basic(u, p);
+        }
     }
+
+    if let Some((u, p)) = crate::dockercfg::auth_for(reference.registry()) {
+        return RegistryAuth::Basic(u, p);
+    }
+
+    RegistryAuth::Anonymous
 }
 
 // --- helpers ---
