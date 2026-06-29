@@ -25,12 +25,14 @@ pub fn dispatch(cmd: Command) -> Result<()> {
             (None, Some(dir)) => install_from(&dir, &env, name.as_deref(), version.as_deref()),
         },
         Command::Uninstall { package, env } => uninstall(&package, &env),
+        Command::Update { package, env } => update(package.as_deref(), &env),
         Command::Register { path, name } => register(&path, name.as_deref()),
         Command::Unregister { name } => unregister(&name),
         Command::List => list(),
         Command::Activate { name, shell } => activate_cmd(&name, &shell),
         Command::Deactivate { shell } => deactivate_cmd(&shell),
         Command::Run { name, cmd, args } => run_cmd(&name, &cmd, &args),
+        Command::Which { name, env } => which(&name, env.as_deref()),
         Command::Verify { name } => verify(&name),
         Command::Relocate { name } => relocate_cmd(&name),
         Command::PackIndex { path } => pack_index(&path),
@@ -171,13 +173,16 @@ fn finish_install(
     }
     manifest.save(&env.root)?;
 
-    // Record the files this package laid down so `uninstall` can remove exactly
-    // these and nothing else.
+    // Record the files this package laid down (so `uninstall` removes exactly
+    // those) plus the activation/tools it contributed (so uninstall can revert
+    // them without disturbing what other packages still rely on).
     crate::installed::InstalledFiles {
         package: name.to_string(),
         version: version.to_string(),
         source: source.to_string(),
         files: files.to_vec(),
+        activation: activation.clone(),
+        tools: tools.clone(),
     }
     .save(&env.root)?;
 
@@ -221,6 +226,102 @@ fn merge_activation(
     }
 }
 
+/// Undo a package's activation contributions, leaving anything another installed
+/// package still provides (or that the user has since changed) in place.
+fn revert_activation(
+    base: &mut std::collections::BTreeMap<String, crate::manifest::ActivationBlock>,
+    contributed: &std::collections::BTreeMap<String, crate::manifest::ActivationBlock>,
+    others: &[crate::installed::InstalledFiles],
+) {
+    for (os, block) in contributed {
+        let now_empty = {
+            let cur = match base.get_mut(os) {
+                Some(c) => c,
+                None => continue,
+            };
+            // env vars: drop a key only if no other package set it and the value
+            // is still the one this package contributed (don't clobber user edits).
+            for (k, v) in &block.env {
+                let kept_by_other = others
+                    .iter()
+                    .any(|o| o.activation.get(os).and_then(|b| b.env.get(k)).is_some());
+                if !kept_by_other && cur.env.get(k) == Some(v) {
+                    cur.env.remove(k);
+                }
+            }
+            // path_prepend: drop a path only if no other package also adds it.
+            for p in &block.path_prepend {
+                let kept_by_other = others
+                    .iter()
+                    .any(|o| o.activation.get(os).is_some_and(|b| b.path_prepend.contains(p)));
+                if !kept_by_other {
+                    cur.path_prepend.retain(|x| x != p);
+                }
+            }
+            cur.path_prepend.is_empty() && cur.env.is_empty()
+        };
+        if now_empty {
+            base.remove(os);
+        }
+    }
+}
+
+/// Undo a package's tools, keeping any a different package also contributes or
+/// the user has since redefined.
+fn revert_tools(
+    base: &mut std::collections::BTreeMap<String, crate::manifest::Tool>,
+    contributed: &std::collections::BTreeMap<String, crate::manifest::Tool>,
+    others: &[crate::installed::InstalledFiles],
+) {
+    for (tname, tool) in contributed {
+        let kept_by_other = others.iter().any(|o| o.tools.contains_key(tname));
+        if !kept_by_other && base.get(tname) == Some(tool) {
+            base.remove(tname);
+        }
+    }
+}
+
+/// Re-install one or all packages from the source recorded in the manifest.
+/// A `file://` source re-installs from that local directory; anything else is
+/// re-pulled from the registry. (Like a re-install, this overlays the current
+/// contents; files dropped between versions are not pruned.)
+fn update(package: Option<&str>, env_name: &str) -> Result<()> {
+    let env = load_registered_env(env_name)?;
+
+    let targets: Vec<(String, String)> = match package {
+        Some(p) => {
+            let pk = env
+                .manifest
+                .packages
+                .iter()
+                .find(|x| x.name == p)
+                .ok_or_else(|| anyhow!("'{p}' is not installed in '{env_name}'"))?;
+            vec![(pk.name.clone(), pk.source.clone())]
+        }
+        None => env
+            .manifest
+            .packages
+            .iter()
+            .map(|p| (p.name.clone(), p.source.clone()))
+            .collect(),
+    };
+
+    if targets.is_empty() {
+        println!("No packages installed in '{env_name}'.");
+        return Ok(());
+    }
+
+    for (pname, source) in &targets {
+        eprintln!("toolbox: updating {pname} from {source}");
+        match source.strip_prefix("file://") {
+            Some(dir) => install_from(Path::new(dir), env_name, None, None)?,
+            None => install(source, env_name)?,
+        }
+    }
+    println!("Updated {} package(s) in '{env_name}'", targets.len());
+    Ok(())
+}
+
 fn uninstall(package: &str, env_name: &str) -> Result<()> {
     let reg = Registry::load()?;
     let entry = reg.get(env_name)?;
@@ -243,13 +344,20 @@ fn uninstall(package: &str, env_name: &str) -> Result<()> {
     }
     prune_empty_dirs(&env.root, &record.files);
 
-    // Drop the package reference from the env manifest.
+    // What every *other* installed package still contributes, so we don't revert
+    // activation/tools they rely on.
+    let others: Vec<crate::installed::InstalledFiles> =
+        crate::installed::InstalledFiles::all(&env.root)?
+            .into_iter()
+            .filter(|r| r.package != package)
+            .collect();
+
+    // Drop the package reference and revert the activation/tools it merged in.
     let mut manifest = env.manifest.clone();
-    let before = manifest.packages.len();
     manifest.packages.retain(|p| p.name != package);
-    if manifest.packages.len() != before {
-        manifest.save(&env.root)?;
-    }
+    revert_activation(&mut manifest.activation, &record.activation, &others);
+    revert_tools(&mut manifest.tools, &record.tools, &others);
+    manifest.save(&env.root)?;
 
     crate::installed::InstalledFiles::remove(&env.root, package)?;
 
@@ -337,6 +445,14 @@ fn config_dispatch(action: ConfigAction) -> Result<()> {
         ConfigAction::UnsetEnv { env, key, os } => config_unset_env(&env, &key, &os),
         ConfigAction::AddPath { env, path, os } => config_add_path(&env, &path, &os),
         ConfigAction::RemovePath { env, path, os } => config_remove_path(&env, &path, &os),
+        ConfigAction::AddTool {
+            env,
+            name,
+            run,
+            args,
+            env_vars,
+        } => config_add_tool(&env, &name, &run, &args, &env_vars),
+        ConfigAction::RemoveTool { env, name } => config_remove_tool(&env, &name),
         ConfigAction::Show { env } => config_show(&env),
     }
 }
@@ -409,20 +525,77 @@ fn config_remove_path(name: &str, path: &str, os: &str) -> Result<()> {
     Ok(())
 }
 
+fn config_add_tool(
+    name: &str,
+    tool_name: &str,
+    run: &str,
+    args: &[String],
+    env_vars: &[String],
+) -> Result<()> {
+    let env = load_registered_env(name)?;
+    let mut tool_env = std::collections::BTreeMap::new();
+    for kv in env_vars {
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| anyhow!("--env-var must be KEY=VALUE, got '{kv}'"))?;
+        tool_env.insert(k.to_string(), v.to_string());
+    }
+    let mut manifest = env.manifest.clone();
+    manifest.tools.insert(
+        tool_name.to_string(),
+        crate::manifest::Tool {
+            run: run.to_string(),
+            args: args.to_vec(),
+            env: tool_env,
+        },
+    );
+    manifest.save(&env.root)?;
+    println!("Added tool '{tool_name}' to '{name}' (run: {run})");
+    Ok(())
+}
+
+fn config_remove_tool(name: &str, tool_name: &str) -> Result<()> {
+    let env = load_registered_env(name)?;
+    let mut manifest = env.manifest.clone();
+    if manifest.tools.remove(tool_name).is_none() {
+        anyhow::bail!("'{tool_name}' is not a declared tool of '{name}'");
+    }
+    manifest.save(&env.root)?;
+    println!("Removed tool '{tool_name}' from '{name}'");
+    Ok(())
+}
+
 fn config_show(name: &str) -> Result<()> {
     let env = load_registered_env(name)?;
-    if env.manifest.activation.is_empty() {
-        println!("No activation configured for '{name}'.");
+    let m = &env.manifest;
+    if m.activation.is_empty() && m.tools.is_empty() {
+        println!("No activation or tools configured for '{name}'.");
         return Ok(());
     }
-    println!("Activation for '{name}':");
-    for (os, block) in &env.manifest.activation {
-        println!("  [{os}]");
-        for p in &block.path_prepend {
-            println!("    PATH += {p}");
+    if !m.activation.is_empty() {
+        println!("Activation for '{name}':");
+        for (os, block) in &m.activation {
+            println!("  [{os}]");
+            for p in &block.path_prepend {
+                println!("    PATH += {p}");
+            }
+            for (k, v) in &block.env {
+                println!("    {k} = {v}");
+            }
         }
-        for (k, v) in &block.env {
-            println!("    {k} = {v}");
+    }
+    if !m.tools.is_empty() {
+        println!("Tools for '{name}':");
+        for (tname, tool) in &m.tools {
+            let args = if tool.args.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", tool.args.join(" "))
+            };
+            println!("  {tname}: {}{args}", tool.run);
+            for (k, v) in &tool.env {
+                println!("    env: {k} = {v}");
+            }
         }
     }
     Ok(())
@@ -621,6 +794,28 @@ fn resolve_tool_program(env: &Env, run: &str) -> Result<std::path::PathBuf> {
             env.manifest.name
         )
     })
+}
+
+/// Resolve a declared tool or a program to its path within an env and print it.
+/// The env defaults to `$TOOLBOX_ACTIVE_ENV` (set while a tool runs), so a tool
+/// can call `toolbox which <sibling>` with no `--env`. Read-only.
+fn which(name: &str, env_arg: Option<&str>) -> Result<()> {
+    let env_name = match env_arg {
+        Some(e) => e.to_string(),
+        None => std::env::var("TOOLBOX_ACTIVE_ENV").map_err(|_| {
+            anyhow!("no env given and TOOLBOX_ACTIVE_ENV is unset; pass --env or activate an env")
+        })?,
+    };
+    let env = load_registered_env(&env_name)?;
+
+    let path = match env.manifest.tools.get(name) {
+        Some(spec) => resolve_tool_program(&env, &spec.run)?,
+        None => activate::resolve_program(&env, name).ok_or_else(|| {
+            anyhow!("'{name}' is not a declared tool or a program on the PATH of env '{env_name}'")
+        })?,
+    };
+    println!("{}", path.display());
+    Ok(())
 }
 
 fn verify(name: &str) -> Result<()> {

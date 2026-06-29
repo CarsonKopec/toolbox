@@ -40,6 +40,13 @@ pub enum Command {
         #[arg(short, long)]
         env: String,
     },
+    /// Re-install installed packages from their recorded source.
+    Update {
+        /// Package to update. Omit to update every installed package.
+        package: Option<String>,
+        #[arg(short, long)]
+        env: String,
+    },
     /// Add an existing env at <path> to this machine's registry.
     Register {
         path: PathBuf,
@@ -73,6 +80,16 @@ pub enum Command {
         /// Arguments passed to the tool/program.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
+    },
+    /// Resolve a declared tool or a program to its path within an env, printing
+    /// just the path. Meant to be called from inside a running tool, where
+    /// TOOLBOX_ACTIVE_ENV supplies the env if --env is omitted.
+    Which {
+        /// A declared tool name, or a program to look up on the env's PATH.
+        name: String,
+        /// Env to resolve in. Defaults to $TOOLBOX_ACTIVE_ENV.
+        #[arg(short, long)]
+        env: Option<String>,
     },
     /// Verify env integrity and check whether relocation is needed.
     Verify { name: String },
@@ -144,6 +161,24 @@ pub enum ConfigAction {
         #[arg(long, default_value = "all")]
         os: String,
     },
-    /// Show the env's activation config.
+    /// Declare (or replace) a runnable tool. `run`, args, and env values may use
+    /// $TOOLBOX_PREFIX and `$ENV.VAR ?? fallback`, resolved at run time.
+    AddTool {
+        env: String,
+        /// Tool name, used as `toolbox run <env> <name>`.
+        name: String,
+        /// Program to run: a command on PATH or an env-relative path.
+        #[arg(long)]
+        run: String,
+        /// An argument (repeatable, in order). May start with `-`.
+        #[arg(long = "arg", allow_hyphen_values = true)]
+        args: Vec<String>,
+        /// An extra env var as KEY=VALUE (repeatable).
+        #[arg(long = "env-var")]
+        env_vars: Vec<String>,
+    },
+    /// Remove a declared tool.
+    RemoveTool { env: String, name: String },
+    /// Show the env's activation config and declared tools.
     Show { env: String },
 }

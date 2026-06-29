@@ -63,3 +63,32 @@ fn runs_declared_tool_raw_and_unknown() {
     assert!(stderr.contains("not a declared tool"), "stderr: {stderr}");
     assert!(stderr.contains("ver"), "error should list declared tools: {stderr}");
 }
+
+#[test]
+fn tool_lifecycle_via_cli() {
+    // Declare, run, and remove a tool entirely through the CLI — no manifest
+    // editing. The tool runs `toolbox --version`.
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let env_dir = tmp.path().join("env");
+    let exe = env!("CARGO_BIN_EXE_toolbox");
+
+    run(toolbox(&home).args(["init", env_dir.to_str().unwrap(), "--name", "tenv"]));
+    run(toolbox(&home).args(["register", env_dir.to_str().unwrap()]));
+
+    // Add a tool from the CLI.
+    run(toolbox(&home).args([
+        "config", "add-tool", "tenv", "ver", "--run", exe, "--arg", "--version",
+    ]));
+
+    // It shows up and runs.
+    let shown = run(toolbox(&home).args(["config", "show", "tenv"]));
+    assert!(shown.contains("ver:"), "tool not shown: {shown}");
+    let out = run(toolbox(&home).args(["run", "tenv", "ver"]));
+    assert!(out.contains("toolbox"), "tool output: {out}");
+
+    // Remove it; it's gone.
+    run(toolbox(&home).args(["config", "remove-tool", "tenv", "ver"]));
+    let gone = toolbox(&home).args(["run", "tenv", "ver"]).output().unwrap();
+    assert!(!gone.status.success(), "removed tool should not run");
+}

@@ -32,7 +32,7 @@ pub struct Manifest {
 /// A declared, runnable tool. `run`, `args`, and `env` values are render-time
 /// templates (see `activation_vars`): they may use `$TOOLBOX_PREFIX` and
 /// `$ENV.VAR ?? fallback`. Serde derives are for the OCI package config blob.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tool {
     /// Program to run: an interpreter/command resolved via the env's PATH, or a
     /// path (env-relative, or absolute after template resolution).
@@ -479,6 +479,15 @@ mod tests {
         assert!(back.packages.is_empty());
         assert!(back.activation.is_empty());
         assert!(back.tools.is_empty());
+    }
+
+    #[test]
+    fn manifest_with_utf8_bom_parses() {
+        // Windows editors prepend a BOM; it must not fold into the first key.
+        let src = "\u{feff}name = \"q\"\nversion = \"1.0.0\"\n";
+        let m = Manifest::from_tomlp(src, Path::new("m.tomlp")).unwrap();
+        assert_eq!(m.name, "q");
+        assert_eq!(m.version, "1.0.0");
     }
 
     #[test]

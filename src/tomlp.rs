@@ -22,6 +22,10 @@ use tomlplus_syntax::{parse, validate, Document};
 /// parser or the annotation validator) as a hard failure. `path` is only used
 /// for error messages.
 pub fn parse_strict(source: &str, path: &Path) -> Result<Document> {
+    // Tolerate a leading UTF-8 BOM: Windows editors (Notepad, PowerShell's
+    // `Set-Content -Encoding utf8`) prepend one, which would otherwise fold into
+    // the first key name (e.g. `\u{feff}name`) and break parsing.
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let doc = parse(source);
 
     let mut errors: Vec<String> = doc

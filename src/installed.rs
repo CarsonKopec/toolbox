@@ -7,8 +7,11 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::manifest::{ActivationBlock, Tool};
 
 const INSTALLED_DIR: &str = ".toolbox/installed";
 
@@ -21,6 +24,12 @@ pub struct InstalledFiles {
     /// Files this package extracted, relative to the env root, forward slashes.
     /// Directory entries are not recorded.
     pub files: Vec<String>,
+    /// Activation contributions this package merged in (so uninstall can revert).
+    #[serde(default)]
+    pub activation: BTreeMap<String, ActivationBlock>,
+    /// Tools this package contributed (so uninstall can revert).
+    #[serde(default)]
+    pub tools: BTreeMap<String, Tool>,
 }
 
 impl InstalledFiles {
@@ -50,6 +59,29 @@ impl InstalledFiles {
         Ok(Some(
             serde_json::from_str(&s).with_context(|| format!("parsing {}", p.display()))?,
         ))
+    }
+
+    /// Load every install record in the env (in arbitrary order).
+    pub fn all(env_root: &Path) -> Result<Vec<Self>> {
+        let dir = env_root.join(INSTALLED_DIR);
+        let mut out = Vec::new();
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(e).with_context(|| format!("reading {}", dir.display())),
+        };
+        for entry in entries {
+            let path = entry?.path();
+            if path.extension().is_some_and(|e| e == "json") {
+                let s = fs::read_to_string(&path)
+                    .with_context(|| format!("reading {}", path.display()))?;
+                out.push(
+                    serde_json::from_str(&s)
+                        .with_context(|| format!("parsing {}", path.display()))?,
+                );
+            }
+        }
+        Ok(out)
     }
 
     /// Delete the record file. No-op if it doesn't exist.
@@ -86,6 +118,8 @@ mod tests {
             version: "14.1.0".into(),
             source: "ghcr.io/me/ripgrep:14.1.0".into(),
             files: vec!["windows/bin/rg.exe".into()],
+            activation: BTreeMap::new(),
+            tools: BTreeMap::new(),
         };
         rec.save(root).unwrap();
 

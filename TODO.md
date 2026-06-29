@@ -21,6 +21,7 @@ Working backlog, ordered by impact. Check items off as they land.
 
 - [x] **Formalize the varspike** — adopted "render-time templates" as the model; renamed `varspike` → `activation_vars`, reframed the docs, documented the value syntax (`$TOOLBOX_PREFIX`, `$ENV.VAR ?? fallback`) on `ActivationBlock.env`
 - [x] **CLI to edit activation** — `toolbox config set-env / unset-env / add-path / remove-path / show`; edits the env manifest's activation (os-scoped via `--os`, self-validating save, empty-block pruning)
+- [x] **CLI to manage tools** — `toolbox config add-tool / remove-tool` (and `show` now lists tools), so declaring a runnable tool no longer needs hand-editing the manifest
 
 ## Tool runtime (new initiative)
 
@@ -28,13 +29,13 @@ Goal: run tools (incl. custom scripts) through toolbox, let tools call back, and
 supervise long-running services. All three sit on the declarative-tools substrate.
 
 - [x] **Phase 1 — Declarative tools.** `[tools.x]` in the manifest (`run`/`args`/`env`, template-resolved); `toolbox run <env> <tool|program> [args]` runs a declared tool or falls back to a raw program. Packages ship tools via `toolbox-package.tomlp` → OCI config blob → merged on install.
-- [ ] **Phase 2 — Callback API.** Tools re-invoke `toolbox` (on PATH after activation) to resolve sibling tools / emit events. No daemon. _(small–medium)_
+- [x] **Phase 2 — Callback API (resolve).** `toolbox which <name>` resolves a declared tool or program to its path; env defaults to `$TOOLBOX_ACTIVE_ENV`, so a running tool can find a sibling with no `--env`. (Event emission, if ever wanted, would build on this.)
 - [ ] **Phase 3 — Long-running services.** A service is a tool with a restart policy; supervise via a per-service `toolbox __supervise` shim + state file (pid/log), no central daemon. `start`/`stop`/`status`/`logs`. Socket IPC only if live interaction is needed later. _(large)_
 
 ## Later — adoption and reach
 
-- [ ] **Revert package activation on uninstall** — install merges activation additively; uninstall removes files + the manifest package ref but leaves activation behind (e.g. a stale `PYTHONHOME`). Needs per-package activation provenance (likely stored in the install record) to subtract safely _(small–medium)_
+- [x] **Revert package activation/tools on uninstall** — the install record now stores what each package contributed; uninstall subtracts its activation + tools, skipping anything another installed package still provides or the user has since changed.
 
 - [ ] **Real registry auth** for pull *and* push (tokens / docker-config; not just anonymous/basic) _(medium)_
 - [x] **README + packaging guide** — `README.md` (overview, install, quickstart, command reference) and `docs/GUIDE.md` (day-to-day walkthrough + packaging). Published with the v0.1.0 GitHub release.
-- [ ] **`update` command** — re-pull a newer version of an installed package _(small–medium)_
+- [x] **`update` command** — `toolbox update [pkg] -e <env>` re-installs one or all packages from their recorded source (`file://` dir or registry ref)
