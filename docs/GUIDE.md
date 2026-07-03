@@ -149,6 +149,20 @@ toolbox run dev greet                             # the package's tool is now av
 toolbox uninstall pytools -e dev                  # removes exactly the files it laid down
 ```
 
+### What makes a package relocatable
+
+This is the part to understand before packaging a real tool. On install (and on every activate after a move), ToolBox rewrites the `__TOOLBOX_PREFIX__` sentinel — or, on a subsequent move, the previously-patched path — to the env's current location. **Text files** (scripts, shebangs, config) are rewritten freely. **Binary files** are patched in place in fixed-length *slots*: because the patch can't change the file's size, the replacement path is NUL-padded, and it must be **no longer than the original** placeholder.
+
+There are three ways to make a tool survive relocation, best first:
+
+1. **Relative paths or env vars (preferred, no patching needed).** A tool that locates its data relative to its own executable, or reads `$TOOLBOX_PREFIX` / an activation env var, doesn't reference an absolute path at all — so there's nothing to patch. Statically-linked binaries and scripts that use relative paths **just work** dropped into `<os>/bin`. Reach for this whenever you can.
+
+2. **The sentinel, for unavoidable absolute paths in text.** Where a script or config file must contain the env's absolute path, write the literal `__TOOLBOX_PREFIX__` there at build time (e.g. `#!__TOOLBOX_PREFIX__/windows/bin/python`). Text has no length limit, so this always works.
+
+3. **Binaries with baked-in absolute paths (RPATH, embedded config paths).** Bake the sentinel in at build time, and make sure the placeholder slot is **long enough for the longest path you'll ever mount at** — pad it if needed (e.g. build against `__TOOLBOX_PREFIX__________________`). If a mount path exceeds the slot, relocation fails with a clear error rather than corrupting the binary. This is the hard case; prefer option 1 for native tools when you can (static linking, `$ORIGIN`/`@loader_path` rpaths).
+
+`toolbox pack-index <dir>` scans a package tree and reports where the sentinel occurs, so you can verify what will be patched before publishing. (Install re-scans on its own, so the index is a build-time check rather than a requirement.)
+
 ## 7. Config file format
 
 ToolBox's manifests and registry are written in [TOML+](https://github.com/CarsonKopec/tomlplus) (`.tomlp`) — a TOML superset adding annotations (`@required`, `@type`, `@pattern`, …) and variables. Generated manifests are self-validating: a value that violates its annotations (e.g. an env name with illegal characters) is rejected at write time. Block dictionaries use `#{ ... }#`.

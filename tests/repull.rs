@@ -54,8 +54,15 @@ fn update_repulls_from_local_source() {
     let data = env_dir.join("share").join("data.txt");
     assert_eq!(std::fs::read_to_string(&data).unwrap(), "version one");
 
-    // Change the package on disk, then update.
+    // v1 also ships a file that v2 will drop, to exercise pruning.
+    std::fs::write(pkg.join("share").join("gone.txt"), "obsolete").unwrap();
+    run(toolbox(&home).args(["update", "mypkg", "-e", "dev"])); // re-record with gone.txt
+    let stale = env_dir.join("share").join("gone.txt");
+    assert!(stale.exists(), "setup: gone.txt should be installed");
+
+    // Change the package on disk (new payload + version, and drop gone.txt).
     write_package(&pkg, "2.0.0", "version two");
+    std::fs::remove_file(pkg.join("share").join("gone.txt")).unwrap();
     let out = run(toolbox(&home).args(["update", "mypkg", "-e", "dev"]));
     assert!(out.contains("Updated 1 package"), "{out}");
 
@@ -63,4 +70,6 @@ fn update_repulls_from_local_source() {
     assert_eq!(std::fs::read_to_string(&data).unwrap(), "version two");
     let manifest = std::fs::read_to_string(env_dir.join("toolbox-env.tomlp")).unwrap();
     assert!(manifest.contains("2.0.0"), "version not updated: {manifest}");
+    // The file dropped between versions was pruned.
+    assert!(!stale.exists(), "gone.txt should have been pruned by update");
 }

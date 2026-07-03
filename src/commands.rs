@@ -285,8 +285,8 @@ fn revert_tools(
 
 /// Re-install one or all packages from the source recorded in the manifest.
 /// A `file://` source re-installs from that local directory; anything else is
-/// re-pulled from the registry. (Like a re-install, this overlays the current
-/// contents; files dropped between versions are not pruned.)
+/// re-pulled from the registry. Files present in the old version but not the new
+/// one are pruned (by diffing the install records).
 fn update(package: Option<&str>, env_name: &str) -> Result<()> {
     let env = load_registered_env(env_name)?;
 
@@ -314,10 +314,37 @@ fn update(package: Option<&str>, env_name: &str) -> Result<()> {
     }
 
     for (pname, source) in &targets {
+        // Snapshot the old file list, re-install, then remove files that the new
+        // version no longer ships.
+        let old_files: Vec<String> = crate::installed::InstalledFiles::load(&env.root, pname)?
+            .map(|r| r.files)
+            .unwrap_or_default();
+
         eprintln!("toolbox: updating {pname} from {source}");
         match source.strip_prefix("file://") {
             Some(dir) => install_from(Path::new(dir), env_name, None, None)?,
             None => install(source, env_name)?,
+        }
+
+        let new_files: std::collections::HashSet<String> =
+            crate::installed::InstalledFiles::load(&env.root, pname)?
+                .map(|r| r.files.into_iter().collect())
+                .unwrap_or_default();
+
+        let mut stale = Vec::new();
+        for f in old_files {
+            if !new_files.contains(&f) {
+                let abs = env.root.join(f.replace('/', std::path::MAIN_SEPARATOR_STR));
+                match std::fs::remove_file(&abs) {
+                    Ok(()) => stale.push(f),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e).with_context(|| format!("pruning {}", abs.display())),
+                }
+            }
+        }
+        if !stale.is_empty() {
+            prune_empty_dirs(&env.root, &stale);
+            eprintln!("toolbox: pruned {} stale file(s) from {pname}", stale.len());
         }
     }
     println!("Updated {} package(s) in '{env_name}'", targets.len());

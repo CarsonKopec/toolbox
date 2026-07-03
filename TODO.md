@@ -44,8 +44,8 @@ supervise long-running services. All three sit on the declarative-tools substrat
 
 - [x] **`remove` an env** — `toolbox remove <env>` deletes the env directory *and* unregisters it, refusing to delete a directory that isn't a toolbox env (no manifest).
 - [x] **`info <env>`** — one view of an env: version, mount path, relocation status, packages, tools, and an activation summary.
-- [ ] **Document the relocation/packaging reality** — relocation is clean for text files (shebangs, scripts) and length-bounded binary slots, but making a *compiled* binary relocatable needs the `__TOOLBOX_PREFIX__` sentinel baked in at build time, with the new path fitting the original slot. The guide explains pushing but not what actually makes a binary relocatable. Document the practical guidance (prefer relative paths / env vars; sentinel is for unavoidable absolute paths) so expectations are honest. _(small–medium)_
-- [ ] **`update` should prune** — it currently overlays the new version but doesn't remove files that disappeared between versions. Make it uninstall-then-reinstall (or diff the file lists). _(small–medium)_
+- [x] **Document the relocation/packaging reality** — `docs/GUIDE.md` "What makes a package relocatable": how text vs. length-bounded binary slots are patched, and the three ways to make a tool survive relocation (relative paths/env vars first; sentinel for unavoidable absolute paths; padded slots for binaries).
+- [x] **`update` prunes** — update now diffs the old vs. new install records and removes files the new version no longer ships (empty dirs pruned too).
 
 ## Release polish — before cutting v0.1.1
 
