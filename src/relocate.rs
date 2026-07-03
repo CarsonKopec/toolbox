@@ -67,7 +67,7 @@ impl RelocateIndex {
             return Ok(Self::default());
         }
         let s = fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
-        Ok(serde_json::from_str(&s).with_context(|| format!("parsing {}", p.display()))?)
+        serde_json::from_str(&s).with_context(|| format!("parsing {}", p.display()))
     }
 
     pub fn save(&self, env_root: &Path) -> Result<()> {
@@ -207,8 +207,10 @@ pub fn apply_with_prev(
         match entry.kind {
             FileKind::Text => apply_text(&abs, prev.as_bytes(), new.as_bytes())
                 .with_context(|| format!("patching text file {}", entry.path))?,
-            FileKind::Binary => apply_binary(&abs, &entry.binary_slots, prev.as_bytes(), new.as_bytes())
-                .with_context(|| format!("patching binary file {}", entry.path))?,
+            FileKind::Binary => {
+                apply_binary(&abs, &entry.binary_slots, prev.as_bytes(), new.as_bytes())
+                    .with_context(|| format!("patching binary file {}", entry.path))?
+            }
         }
     }
 
@@ -362,10 +364,7 @@ mod tests {
             fs::read_to_string(&f).unwrap(),
             "#!/new/place/bin/sh\necho /new/place\n"
         );
-        assert_eq!(
-            last_prefix(d.path()).unwrap(),
-            PathBuf::from("/new/place")
-        );
+        assert_eq!(last_prefix(d.path()).unwrap(), PathBuf::from("/new/place"));
     }
 
     #[test]
@@ -389,7 +388,7 @@ mod tests {
         fs::create_dir_all(f.parent().unwrap()).unwrap();
         let mut data = vec![0u8; 16]; // pretend header
         data.extend_from_slice(b"__TOOLBOX_PREFIX__/lib/python"); // 18 + 11 = 29
-        data.extend(std::iter::repeat(0u8).take(35)); // pad slot to 64
+        data.resize(data.len() + 35, 0u8); // pad slot to 64
         data.extend_from_slice(b"\xff\xff\xff\xff"); // tail sentinel
         fs::write(&f, &data).unwrap();
 
@@ -416,7 +415,7 @@ mod tests {
         fs::create_dir_all(f.parent().unwrap()).unwrap();
         let mut data = vec![0u8; 4];
         data.extend_from_slice(b"__TOOLBOX_PREFIX__/lib/x"); // 18+6 = 24
-        data.extend(std::iter::repeat(0u8).take(40)); // slot total = 64
+        data.resize(data.len() + 40, 0u8); // slot total = 64
         fs::write(&f, &data).unwrap();
         let original_len = data.len();
 

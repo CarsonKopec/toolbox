@@ -69,7 +69,13 @@ fn update_repulls_from_local_source() {
     // The new payload and version landed in the env.
     assert_eq!(std::fs::read_to_string(&data).unwrap(), "version two");
     let manifest = std::fs::read_to_string(env_dir.join("toolbox-env.tomlp")).unwrap();
-    assert!(manifest.contains("2.0.0"), "version not updated: {manifest}");
+    assert!(
+        manifest.contains("2.0.0"),
+        "version not updated: {manifest}"
+    );
     // The file dropped between versions was pruned.
-    assert!(!stale.exists(), "gone.txt should have been pruned by update");
+    assert!(
+        !stale.exists(),
+        "gone.txt should have been pruned by update"
+    );
 }

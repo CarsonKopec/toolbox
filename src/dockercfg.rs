@@ -67,7 +67,10 @@ fn config_dir() -> Option<PathBuf> {
 /// legacy Docker Hub URL).
 fn candidate_keys(registry: &str) -> Vec<String> {
     let mut keys = vec![registry.to_string(), format!("https://{registry}")];
-    if matches!(registry, "docker.io" | "registry-1.docker.io" | "index.docker.io") {
+    if matches!(
+        registry,
+        "docker.io" | "registry-1.docker.io" | "index.docker.io"
+    ) {
         keys.push("https://index.docker.io/v1/".to_string());
     }
     keys
@@ -149,9 +152,8 @@ mod tests {
     #[test]
     fn auths_base64_is_decoded() {
         // base64("carson:secret-token") = "Y2Fyc29uOnNlY3JldC10b2tlbg=="
-        let cfg = parse(
-            r#"{ "auths": { "ghcr.io": { "auth": "Y2Fyc29uOnNlY3JldC10b2tlbg==" } } }"#,
-        );
+        let cfg =
+            parse(r#"{ "auths": { "ghcr.io": { "auth": "Y2Fyc29uOnNlY3JldC10b2tlbg==" } } }"#);
         assert_eq!(
             lookup(&cfg, "ghcr.io"),
             Some(("carson".into(), "secret-token".into()))
@@ -160,17 +162,13 @@ mod tests {
 
     #[test]
     fn auths_plain_username_password() {
-        let cfg = parse(
-            r#"{ "auths": { "ghcr.io": { "username": "me", "password": "pw" } } }"#,
-        );
+        let cfg = parse(r#"{ "auths": { "ghcr.io": { "username": "me", "password": "pw" } } }"#);
         assert_eq!(lookup(&cfg, "ghcr.io"), Some(("me".into(), "pw".into())));
     }
 
     #[test]
     fn docker_hub_key_variants_match() {
-        let cfg = parse(
-            r#"{ "auths": { "https://index.docker.io/v1/": { "auth": "YTpi" } } }"#,
-        );
+        let cfg = parse(r#"{ "auths": { "https://index.docker.io/v1/": { "auth": "YTpi" } } }"#);
         // base64("a:b") = "YTpi"
         assert_eq!(lookup(&cfg, "docker.io"), Some(("a".into(), "b".into())));
     }

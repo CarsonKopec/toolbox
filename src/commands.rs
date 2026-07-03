@@ -17,9 +17,9 @@ pub fn dispatch(cmd: Command) -> Result<()> {
             name,
             version,
         } => match (package, from) {
-            (Some(_), Some(_)) => {
-                Err(anyhow!("pass either a package reference or --from, not both"))
-            }
+            (Some(_), Some(_)) => Err(anyhow!(
+                "pass either a package reference or --from, not both"
+            )),
             (None, None) => Err(anyhow!("provide a package reference or --from <dir>")),
             (Some(pkg), None) => install(&pkg, &env),
             (None, Some(dir)) => install_from(&dir, &env, name.as_deref(), version.as_deref()),
@@ -63,7 +63,11 @@ fn init(path: &Path, name: Option<&str>) -> Result<()> {
         .or_else(|| path.file_name().map(|s| s.to_string_lossy().into_owned()))
         .ok_or_else(|| anyhow!("could not infer env name from path; pass --name"))?;
     let env = Env::create(path, &n)?;
-    println!("Initialized env '{}' at {}", env.manifest.name, env.root.display());
+    println!(
+        "Initialized env '{}' at {}",
+        env.manifest.name,
+        env.root.display()
+    );
     Ok(())
 }
 
@@ -135,7 +139,14 @@ fn install_from(
 
     let source = format!("file://{}", abs.display());
     finish_install(
-        &env, env_name, &pkg_name, &pkg_version, &source, &files, &activation, &tools,
+        &env,
+        env_name,
+        &pkg_name,
+        &pkg_version,
+        &source,
+        &files,
+        &activation,
+        &tools,
     )
 }
 
@@ -253,9 +264,11 @@ fn revert_activation(
             }
             // path_prepend: drop a path only if no other package also adds it.
             for p in &block.path_prepend {
-                let kept_by_other = others
-                    .iter()
-                    .any(|o| o.activation.get(os).is_some_and(|b| b.path_prepend.contains(p)));
+                let kept_by_other = others.iter().any(|o| {
+                    o.activation
+                        .get(os)
+                        .is_some_and(|b| b.path_prepend.contains(p))
+                });
                 if !kept_by_other {
                     cur.path_prepend.retain(|x| x != p);
                 }
@@ -356,15 +369,16 @@ fn uninstall(package: &str, env_name: &str) -> Result<()> {
     let entry = reg.get(env_name)?;
     let env = Env::load(&entry.path)?;
 
-    let record = crate::installed::InstalledFiles::load(&env.root, package)?.ok_or_else(|| {
-        anyhow!("package '{package}' is not installed in env '{env_name}'")
-    })?;
+    let record = crate::installed::InstalledFiles::load(&env.root, package)?
+        .ok_or_else(|| anyhow!("package '{package}' is not installed in env '{env_name}'"))?;
 
     // Remove each recorded file. Missing files are tolerated (already gone),
     // but other I/O errors are surfaced.
     let mut removed = 0usize;
     for rel in &record.files {
-        let abs = env.root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let abs = env
+            .root
+            .join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
         match std::fs::remove_file(&abs) {
             Ok(()) => removed += 1,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -689,7 +703,10 @@ fn info(name: &str) -> Result<()> {
         Some(_) => "up to date".to_string(),
         None => "never activated on this machine".to_string(),
     };
-    println!("  relocation: {reloc} ({} indexed file(s))", idx.entries.len());
+    println!(
+        "  relocation: {reloc} ({} indexed file(s))",
+        idx.entries.len()
+    );
 
     if m.packages.is_empty() {
         println!("  packages: (none)");
@@ -731,7 +748,7 @@ fn list() -> Result<()> {
         println!("No envs registered. Use `toolbox register <path>`.");
         return Ok(());
     }
-    println!("{:<24} {:<8} {}", "NAME", "STATUS", "PATH");
+    println!("{:<24} {:<8} PATH", "NAME", "STATUS");
     for (name, entry) in &reg.envs {
         let status = if entry.path.join(crate::manifest::MANIFEST_FILE).exists() {
             "ok"
@@ -927,7 +944,12 @@ fn verify(name: &str) -> Result<()> {
     let reg = Registry::load()?;
     let entry = reg.get(name)?;
     let env = Env::load(&entry.path)?;
-    println!("Env '{}' v{} at {}", env.manifest.name, env.manifest.version, env.root.display());
+    println!(
+        "Env '{}' v{} at {}",
+        env.manifest.name,
+        env.manifest.version,
+        env.root.display()
+    );
     let idx = crate::relocate::RelocateIndex::load(&env.root)?;
     println!("Relocate entries: {}", idx.entries.len());
     if let Some(last) = crate::relocate::last_prefix(&env.root) {
@@ -948,7 +970,8 @@ fn verify(name: &str) -> Result<()> {
 
 fn shellenv(shell_arg: &str) -> Result<()> {
     let shell = parse_shell(shell_arg)?;
-    let bin = std::env::current_exe().unwrap_or_else(|_| paths::install_root().unwrap().join("bin/toolbox"));
+    let bin = std::env::current_exe()
+        .unwrap_or_else(|_| paths::install_root().unwrap().join("bin/toolbox"));
     print!("{}", activate::shell_init(shell, &bin));
     Ok(())
 }
@@ -985,7 +1008,10 @@ mod tests {
         base.insert("all".to_string(), block(&["share/bin"], &[("FOO", "old")]));
         let mut add = BTreeMap::new();
         // "share/bin" already present (should not duplicate); "lib" is new.
-        add.insert("all".to_string(), block(&["share/bin", "lib"], &[("FOO", "new")]));
+        add.insert(
+            "all".to_string(),
+            block(&["share/bin", "lib"], &[("FOO", "new")]),
+        );
         merge_activation(&mut base, &add);
         assert_eq!(base["all"].path_prepend, vec!["share/bin", "lib"]);
         assert_eq!(base["all"].env["FOO"], "new");

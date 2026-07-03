@@ -55,8 +55,22 @@ pub fn render_activate(env: &Env, shell: Shell) -> Result<String> {
     }
 
     match shell {
-        Shell::Posix => render_posix(&mut out, &env.manifest.name, &prefix, &env.root, &path_adds, &env.manifest.activation)?,
-        Shell::PowerShell => render_powershell(&mut out, &env.manifest.name, &prefix, &env.root, &path_adds, &env.manifest.activation)?,
+        Shell::Posix => render_posix(
+            &mut out,
+            &env.manifest.name,
+            &prefix,
+            &env.root,
+            &path_adds,
+            &env.manifest.activation,
+        )?,
+        Shell::PowerShell => render_powershell(
+            &mut out,
+            &env.manifest.name,
+            &prefix,
+            &env.root,
+            &path_adds,
+            &env.manifest.activation,
+        )?,
     }
     Ok(out)
 }
@@ -69,7 +83,7 @@ fn render_posix(
     path_adds: &[String],
     activation: &std::collections::BTreeMap<String, ActivationBlock>,
 ) -> Result<()> {
-    out.push_str(&format!("export _TOOLBOX_OLD_PATH=\"$PATH\"\n"));
+    out.push_str("export _TOOLBOX_OLD_PATH=\"$PATH\"\n");
     let joined = path_adds.join(":");
     out.push_str(&format!("export PATH=\"{joined}:$PATH\"\n"));
     out.push_str(&format!("export TOOLBOX_PREFIX=\"{prefix}\"\n"));
@@ -186,7 +200,11 @@ fn path_adds(env: &Env) -> Vec<PathBuf> {
 pub fn resolve_program(env: &Env, program: &str) -> Option<PathBuf> {
     let p = Path::new(program);
     if p.is_absolute() || program.contains('/') || program.contains('\\') {
-        return if p.is_file() { Some(p.to_path_buf()) } else { None };
+        return if p.is_file() {
+            Some(p.to_path_buf())
+        } else {
+            None
+        };
     }
 
     let mut search = path_adds(env);

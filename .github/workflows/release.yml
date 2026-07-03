@@ -31,7 +31,7 @@ jobs:
             bin: toolbox.exe
             asset: toolbox-${{ github.ref_name }}-x86_64-windows.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install TLS build deps (Linux)
         if: runner.os == 'Linux'
@@ -44,6 +44,10 @@ jobs:
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Smoke-test binary
+        shell: bash
+        run: "target/${{ matrix.target }}/release/${{ matrix.bin }} --version"
 
       - name: Stage binary
         shell: bash

@@ -121,7 +121,8 @@ mod tests {
     fn round_trips_through_tomlp() {
         let mut reg = Registry::default();
         // A Windows-style path with backslashes must survive escaping.
-        reg.insert("tools", Path::new(r"C:\Users\me\envs\tools")).unwrap();
+        reg.insert("tools", Path::new(r"C:\Users\me\envs\tools"))
+            .unwrap();
         reg.insert("dev", Path::new("/home/me/dev")).unwrap();
 
         let text = reg.to_tomlp();

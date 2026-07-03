@@ -59,7 +59,10 @@ fn info_summarizes_and_remove_deletes() {
 
     // removing again fails (no longer registered).
     let again = toolbox(&home).args(["remove", "dev"]).output().unwrap();
-    assert!(!again.status.success(), "removing an unregistered env should fail");
+    assert!(
+        !again.status.success(),
+        "removing an unregistered env should fail"
+    );
 }
 
 #[test]

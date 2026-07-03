@@ -61,7 +61,11 @@ fn eval_expr(expr: &str, env_root: &Path) -> Result<String> {
     let source = format!("__v = {expr}");
     let doc = parse_with_env(&source, &resolver);
 
-    if let Some(d) = doc.diagnostics.iter().find(|d| d.severity == Severity::Error) {
+    if let Some(d) = doc
+        .diagnostics
+        .iter()
+        .find(|d| d.severity == Severity::Error)
+    {
         return Err(anyhow!(
             "evaluating activation value `{expr}`: {}",
             d.message

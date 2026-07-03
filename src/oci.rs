@@ -57,8 +57,8 @@ pub struct PullSummary {
     pub tools: std::collections::BTreeMap<String, crate::manifest::Tool>,
 }
 
-/// Pull a ToolBox OCI artifact and extract its layers into `dest`.
-/// Anonymous auth only for now.
+/// Pull a ToolBox OCI artifact and extract its layers into `dest`. Credentials
+/// are resolved via `resolve_auth` (env override, Docker config, or anonymous).
 pub fn pull(reference: &str, dest: &Path) -> Result<PullSummary> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -96,8 +96,8 @@ async fn pull_async(reference: &str, dest: &Path) -> Result<PullSummary> {
 
     // Pull config blob and parse it for name/version.
     let config_bytes = pull_blob_cached(&client, &r, &manifest.config, &cache).await?;
-    let config: PackageConfig = serde_json::from_slice(&config_bytes)
-        .context("parsing ToolBox package config blob")?;
+    let config: PackageConfig =
+        serde_json::from_slice(&config_bytes).context("parsing ToolBox package config blob")?;
 
     let mut layer_count = 0;
     let mut files: Vec<String> = Vec::new();
@@ -151,9 +151,9 @@ pub struct PushSummary {
 /// blob, and push it to `reference`. The author is responsible for having baked
 /// the `__TOOLBOX_PREFIX__` sentinel into relocatable files beforehand.
 ///
-/// Auth: if `TOOLBOX_REGISTRY_USERNAME` and `TOOLBOX_REGISTRY_PASSWORD` are set,
-/// basic auth is used; otherwise the push is anonymous (most registries reject
-/// anonymous pushes, so credentials are usually required).
+/// Credentials are resolved via `resolve_auth` (the `TOOLBOX_REGISTRY_*` env
+/// override, then the Docker config, then anonymous). Most registries reject
+/// anonymous pushes, so credentials are usually required.
 pub fn push(src: &Path, reference: &str, opts: &PushOptions) -> Result<PushSummary> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -198,7 +198,9 @@ async fn push_async(src: &Path, reference: &str, opts: &PushOptions) -> Result<P
         .or_else(|| pkg_manifest.as_ref().map(|m| m.version.clone()))
         .or_else(|| r.tag().map(str::to_string))
         .ok_or_else(|| {
-            anyhow!("no version: pass a tagged reference (e.g. name:1.2.3) or use a version override")
+            anyhow!(
+                "no version: pass a tagged reference (e.g. name:1.2.3) or use a version override"
+            )
         })?;
     let description = opts
         .description
@@ -404,8 +406,7 @@ async fn pull_blob_to_cache(
 fn extract_layer(blob: &Path, dest: &Path) -> Result<Vec<String>> {
     // `unpack_in` canonicalizes `dest`, so it must exist first. (`Archive::unpack`
     // used to create it for us.)
-    std::fs::create_dir_all(dest)
-        .with_context(|| format!("creating {}", dest.display()))?;
+    std::fs::create_dir_all(dest).with_context(|| format!("creating {}", dest.display()))?;
     let f = std::fs::File::open(blob)?;
     let decoder = zstd::Decoder::new(f).context("opening zstd decoder")?;
     let mut archive = tar::Archive::new(decoder);
@@ -473,8 +474,11 @@ mod tests {
 
     #[test]
     fn digest_verify_mismatch() {
-        verify_digest(b"x", "sha256:0000000000000000000000000000000000000000000000000000000000000000")
-            .unwrap_err();
+        verify_digest(
+            b"x",
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        .unwrap_err();
     }
 
     #[test]
@@ -506,7 +510,8 @@ mod tests {
         let files = extract_layer(&blob_path, &dest).unwrap();
         assert_eq!(files, vec!["windows/bin/hello.py".to_string()]);
 
-        let extracted = std::fs::read_to_string(dest.join("windows").join("bin").join("hello.py")).unwrap();
+        let extracted =
+            std::fs::read_to_string(dest.join("windows").join("bin").join("hello.py")).unwrap();
         assert_eq!(extracted, "#!__TOOLBOX_PREFIX__/bin/python\n");
     }
 

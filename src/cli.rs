@@ -2,7 +2,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "toolbox", version, about = "Portable env manager with relocatable envs as OCI artifacts.")]
+#[command(
+    name = "toolbox",
+    version,
+    about = "Portable env manager with relocatable envs as OCI artifacts."
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,

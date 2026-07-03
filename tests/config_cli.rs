@@ -70,7 +70,10 @@ fn config_edits_activation_and_renders() {
     let shown = run(toolbox(&home).args(["config", "show", "cfgenv"]));
     assert!(!shown.contains("GREETING"), "{shown}");
     assert!(!shown.contains("share/bin"), "{shown}");
-    assert!(shown.contains("EDITOR ="), "template var should remain: {shown}");
+    assert!(
+        shown.contains("EDITOR ="),
+        "template var should remain: {shown}"
+    );
 
     // Removing something that isn't there is an error.
     let out = toolbox(&home)

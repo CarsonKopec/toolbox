@@ -125,8 +125,10 @@ impl Manifest {
 
         doc.config
             .insert("version".into(), Value::String(self.version.clone()));
-        doc.meta
-            .insert("version".into(), vec![tomlp::required(), tomlp::typed("string")]);
+        doc.meta.insert(
+            "version".into(),
+            vec![tomlp::required(), tomlp::typed("string")],
+        );
 
         if let Some(desc) = &self.description {
             doc.config
@@ -185,9 +187,7 @@ impl Manifest {
                 if !tool.args.is_empty() {
                     t.insert(
                         "args".into(),
-                        Value::Array(
-                            tool.args.iter().map(|s| Value::String(s.clone())).collect(),
-                        ),
+                        Value::Array(tool.args.iter().map(|s| Value::String(s.clone())).collect()),
                     );
                 }
                 if !tool.env.is_empty() {
@@ -217,13 +217,13 @@ impl Manifest {
 
         let mut packages = Vec::new();
         if let Some(value) = config.get("packages") {
-            let arr = value.as_array().ok_or_else(|| {
-                anyhow!("{}: `packages` must be an array", path.display())
-            })?;
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("{}: `packages` must be an array", path.display()))?;
             for (i, item) in arr.iter().enumerate() {
-                let d = item.as_dict().ok_or_else(|| {
-                    anyhow!("{}: packages[{i}] must be a table", path.display())
-                })?;
+                let d = item
+                    .as_dict()
+                    .ok_or_else(|| anyhow!("{}: packages[{i}] must be a table", path.display()))?;
                 packages.push(PackageRef {
                     name: dict_req_str(d, "name", i, path)?,
                     version: dict_req_str(d, "version", i, path)?,
@@ -234,9 +234,9 @@ impl Manifest {
 
         let mut activation = BTreeMap::new();
         if let Some(value) = config.get("activation") {
-            let blocks = value.as_dict().ok_or_else(|| {
-                anyhow!("{}: `activation` must be a table", path.display())
-            })?;
+            let blocks = value
+                .as_dict()
+                .ok_or_else(|| anyhow!("{}: `activation` must be a table", path.display()))?;
             for (os, raw) in blocks {
                 let b = raw.as_dict().ok_or_else(|| {
                     anyhow!("{}: activation.{os} must be a table", path.display())
@@ -244,7 +244,10 @@ impl Manifest {
                 let mut block = ActivationBlock::default();
                 if let Some(pp) = b.get("path_prepend") {
                     let arr = pp.as_array().ok_or_else(|| {
-                        anyhow!("{}: activation.{os}.path_prepend must be an array", path.display())
+                        anyhow!(
+                            "{}: activation.{os}.path_prepend must be an array",
+                            path.display()
+                        )
                     })?;
                     for s in arr {
                         block.path_prepend.push(
@@ -283,9 +286,9 @@ impl Manifest {
                 .as_dict()
                 .ok_or_else(|| anyhow!("{}: `tools` must be a table", path.display()))?;
             for (tname, raw) in map {
-                let t = raw.as_dict().ok_or_else(|| {
-                    anyhow!("{}: tools.{tname} must be a table", path.display())
-                })?;
+                let t = raw
+                    .as_dict()
+                    .ok_or_else(|| anyhow!("{}: tools.{tname} must be a table", path.display()))?;
                 let run = t.get("run").and_then(Value::as_str).ok_or_else(|| {
                     anyhow!("{}: tools.{tname}.run must be a string", path.display())
                 })?;
@@ -336,12 +339,7 @@ impl Manifest {
     }
 }
 
-fn dict_req_str(
-    d: &BTreeMap<String, Value>,
-    key: &str,
-    idx: usize,
-    path: &Path,
-) -> Result<String> {
+fn dict_req_str(d: &BTreeMap<String, Value>, key: &str, idx: usize, path: &Path) -> Result<String> {
     d.get(key)
         .and_then(Value::as_str)
         .map(str::to_string)
@@ -375,7 +373,10 @@ mod tests {
 
     fn sample() -> Manifest {
         let mut env = BTreeMap::new();
-        env.insert("DATA_DIR".to_string(), "$TOOLBOX_PREFIX/share/data".to_string());
+        env.insert(
+            "DATA_DIR".to_string(),
+            "$TOOLBOX_PREFIX/share/data".to_string(),
+        );
         let mut activation = BTreeMap::new();
         activation.insert(
             "all".to_string(),
@@ -439,7 +440,13 @@ mod tests {
         let mut env = BTreeMap::new();
         env.insert("EDITOR".to_string(), "$ENV.EDITOR ?? \"vim\"".to_string());
         let mut activation = BTreeMap::new();
-        activation.insert("all".to_string(), ActivationBlock { path_prepend: vec![], env });
+        activation.insert(
+            "all".to_string(),
+            ActivationBlock {
+                path_prepend: vec![],
+                env,
+            },
+        );
 
         let m = Manifest {
             name: "q".into(),
@@ -450,7 +457,10 @@ mod tests {
             tools: BTreeMap::new(),
         };
         let back = Manifest::from_tomlp(&m.to_tomlp(), Path::new("m.tomlp")).unwrap();
-        assert_eq!(back.activation["all"].env["EDITOR"], "$ENV.EDITOR ?? \"vim\"");
+        assert_eq!(
+            back.activation["all"].env["EDITOR"],
+            "$ENV.EDITOR ?? \"vim\""
+        );
     }
 
     #[test]

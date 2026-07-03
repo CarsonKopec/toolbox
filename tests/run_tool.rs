@@ -61,7 +61,10 @@ fn runs_declared_tool_raw_and_unknown() {
     assert!(!bad.status.success(), "unknown command should fail");
     let stderr = String::from_utf8_lossy(&bad.stderr);
     assert!(stderr.contains("not a declared tool"), "stderr: {stderr}");
-    assert!(stderr.contains("ver"), "error should list declared tools: {stderr}");
+    assert!(
+        stderr.contains("ver"),
+        "error should list declared tools: {stderr}"
+    );
 }
 
 #[test]
@@ -78,7 +81,14 @@ fn tool_lifecycle_via_cli() {
 
     // Add a tool from the CLI.
     run(toolbox(&home).args([
-        "config", "add-tool", "tenv", "ver", "--run", exe, "--arg", "--version",
+        "config",
+        "add-tool",
+        "tenv",
+        "ver",
+        "--run",
+        exe,
+        "--arg",
+        "--version",
     ]));
 
     // It shows up and runs.
@@ -89,6 +99,9 @@ fn tool_lifecycle_via_cli() {
 
     // Remove it; it's gone.
     run(toolbox(&home).args(["config", "remove-tool", "tenv", "ver"]));
-    let gone = toolbox(&home).args(["run", "tenv", "ver"]).output().unwrap();
+    let gone = toolbox(&home)
+        .args(["run", "tenv", "ver"])
+        .output()
+        .unwrap();
     assert!(!gone.status.success(), "removed tool should not run");
 }

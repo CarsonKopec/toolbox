@@ -62,7 +62,10 @@ fn uninstall_reverts_contributions_but_keeps_shared() {
 
     let manifest = || std::fs::read_to_string(env_dir.join("toolbox-env.tomlp")).unwrap();
     let m = manifest();
-    assert!(m.contains("A_VAR") && m.contains("atool") && m.contains("share/common"), "{m}");
+    assert!(
+        m.contains("A_VAR") && m.contains("atool") && m.contains("share/common"),
+        "{m}"
+    );
 
     // Uninstall A: its env var + tool go away, but the shared PATH entry stays
     // (B still needs it).
@@ -70,11 +73,20 @@ fn uninstall_reverts_contributions_but_keeps_shared() {
     let m = manifest();
     assert!(!m.contains("A_VAR"), "A_VAR should be reverted: {m}");
     assert!(!m.contains("atool"), "atool should be reverted: {m}");
-    assert!(m.contains("share/common"), "shared PATH entry must remain: {m}");
+    assert!(
+        m.contains("share/common"),
+        "shared PATH entry must remain: {m}"
+    );
 
     // Uninstall B: now nothing needs the shared entry, so activation is empty.
     run(toolbox(&home).args(["uninstall", "pkg-b", "-e", "dev"]));
     let m = manifest();
-    assert!(!m.contains("share/common"), "shared PATH entry should be gone: {m}");
-    assert!(!m.contains("[activation]"), "activation should be empty: {m}");
+    assert!(
+        !m.contains("share/common"),
+        "shared PATH entry should be gone: {m}"
+    );
+    assert!(
+        !m.contains("[activation]"),
+        "activation should be empty: {m}"
+    );
 }

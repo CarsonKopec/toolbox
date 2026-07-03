@@ -34,7 +34,11 @@ fn package_declared_activation_is_merged_and_rendered() {
     // A package tree with overlay content plus a package manifest declaring
     // activation contributions (a PATH addition and an env var).
     std::fs::create_dir_all(pkg.join("share").join("scripts")).unwrap();
-    std::fs::write(pkg.join("share").join("scripts").join("tool.sh"), "#!/bin/sh\n").unwrap();
+    std::fs::write(
+        pkg.join("share").join("scripts").join("tool.sh"),
+        "#!/bin/sh\n",
+    )
+    .unwrap();
     std::fs::write(
         pkg.join("toolbox-package.tomlp"),
         r#"name = "pytools"
@@ -59,7 +63,10 @@ greet = #{ run = "python", args = ["$TOOLBOX_PREFIX/share/scripts/greet.py"] }#
     assert!(manifest.contains("share/scripts"), "manifest: {manifest}");
     assert!(manifest.contains("[tools]"), "tool not merged: {manifest}");
     assert!(manifest.contains("greet"), "tool not merged: {manifest}");
-    assert!(manifest.contains("greet.py"), "tool args not merged: {manifest}");
+    assert!(
+        manifest.contains("greet.py"),
+        "tool args not merged: {manifest}"
+    );
 
     // The activation script renders the env var with $TOOLBOX_PREFIX resolved,
     // and adds the declared dir to PATH.
@@ -70,5 +77,8 @@ greet = #{ run = "python", args = ["$TOOLBOX_PREFIX/share/scripts/greet.py"] }#
         !script.contains("$TOOLBOX_PREFIX/share/py"),
         "the sentinel should be resolved in the rendered script: {script}"
     );
-    assert!(script.contains("share/scripts"), "PATH addition missing: {script}");
+    assert!(
+        script.contains("share/scripts"),
+        "PATH addition missing: {script}"
+    );
 }

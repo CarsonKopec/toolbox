@@ -49,11 +49,11 @@ supervise long-running services. All three sit on the declarative-tools substrat
 
 ## Release polish — before cutting v0.1.1
 
-- [ ] **`CHANGELOG.md`** — none yet. _(small)_
-- [ ] **Lint in CI** — run `cargo fmt --check` and `cargo clippy -D warnings`; fix whatever they flag (deliberately skipped on the first CI run to avoid red). _(small–medium)_
-- [ ] **Smoke-test release binaries** — CI builds per-OS binaries but never runs even `--version` on them. _(small)_
-- [ ] **Dedupe integration-test helpers** — `toolbox()` / `run()` are copy-pasted across 8 test files; extract a `tests/common/mod.rs`. _(small)_
-- [ ] **Bump `actions/checkout@v4` → `@v5`** — silences the Node-20 deprecation warning. _(trivial)_
+- [x] **`CHANGELOG.md`** — Keep-a-Changelog format, with 0.1.0 and 0.1.1 sections.
+- [x] **Lint in CI** — a `lint` job runs `cargo fmt --check` and `cargo clippy -D warnings`; the code was formatted and clippy-cleaned to match.
+- [x] **Smoke-test release binaries** — the release workflow now runs `--version` on each built binary before attaching it.
+- [x] **Bump `actions/checkout@v4` → `@v5`** — in both workflows.
+- [ ] **Dedupe integration-test helpers** — `toolbox()` / `run()` are copy-pasted across ~8 test files; extract a `tests/common/mod.rs`. (Deferred: internal-only, no release impact.) _(small)_
 
 ## Big / deferred
 
