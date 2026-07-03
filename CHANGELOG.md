@@ -4,7 +4,7 @@ All notable changes to ToolBox are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-07-03
 
 ### Added
 - Background services — `toolbox start` / `stop` / `status` / `logs` run a declared tool detached, stream its output to a log, and track state under `<install_root>/run`.
@@ -40,5 +40,6 @@ artifacts:
 - `activate` / `deactivate` / `run`; declarative tools (`run <env> <tool>`) with package-declared activation and tools merged on install.
 - `config` commands to edit activation; TOML+ (`.tomlp`) self-validating config via `tomlplus-syntax`.
 
+[0.2.0]: https://github.com/CarsonKopec/toolbox/releases/tag/v0.2.0
 [0.1.1]: https://github.com/CarsonKopec/toolbox/releases/tag/v0.1.1
 [0.1.0]: https://github.com/CarsonKopec/toolbox/releases/tag/v0.1.0
