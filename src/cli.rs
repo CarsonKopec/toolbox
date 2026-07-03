@@ -55,8 +55,12 @@ pub enum Command {
     },
     /// Remove an env from this machine's registry (files untouched).
     Unregister { name: String },
+    /// Delete a registered env's directory *and* unregister it.
+    Remove { name: String },
     /// Show registered envs and their mount status.
     List,
+    /// Show a summary of an env: packages, tools, activation, and status.
+    Info { name: String },
     /// Emit shell code to activate an env. Use with `eval $(toolbox activate <name>)`.
     Activate {
         name: String,

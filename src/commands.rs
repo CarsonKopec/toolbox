@@ -28,7 +28,9 @@ pub fn dispatch(cmd: Command) -> Result<()> {
         Command::Update { package, env } => update(package.as_deref(), &env),
         Command::Register { path, name } => register(&path, name.as_deref()),
         Command::Unregister { name } => unregister(&name),
+        Command::Remove { name } => remove(&name),
         Command::List => list(),
+        Command::Info { name } => info(&name),
         Command::Activate { name, shell } => activate_cmd(&name, &shell),
         Command::Deactivate { shell } => deactivate_cmd(&shell),
         Command::Run { name, cmd, args } => run_cmd(&name, &cmd, &args),
@@ -617,6 +619,82 @@ fn unregister(name: &str) -> Result<()> {
     reg.remove(name)?;
     reg.save()?;
     println!("Unregistered '{}'", name);
+    Ok(())
+}
+
+fn remove(name: &str) -> Result<()> {
+    let mut reg = Registry::load()?;
+    let path = reg.get(name)?.path.clone();
+
+    // Safety: only delete a directory that actually looks like a toolbox env, so
+    // a stale/misconfigured registry entry can't nuke an unrelated directory.
+    if !path.join(crate::manifest::MANIFEST_FILE).exists() {
+        return Err(anyhow!(
+            "refusing to delete {}: no {} found (not a toolbox env). \
+             Use `unregister` to drop it from the registry instead.",
+            path.display(),
+            crate::manifest::MANIFEST_FILE
+        ));
+    }
+
+    std::fs::remove_dir_all(&path).with_context(|| format!("deleting {}", path.display()))?;
+    reg.remove(name)?;
+    reg.save()?;
+    println!("Removed env '{name}' and deleted {}", path.display());
+    Ok(())
+}
+
+fn info(name: &str) -> Result<()> {
+    let env = load_registered_env(name)?;
+    let m = &env.manifest;
+
+    println!("{} {}", m.name, m.version);
+    if let Some(d) = &m.description {
+        println!("  {d}");
+    }
+    println!("  path: {}", env.root.display());
+
+    let idx = crate::relocate::RelocateIndex::load(&env.root)?;
+    let reloc = match crate::relocate::last_prefix(&env.root) {
+        Some(last) if last != env.root => {
+            format!("needs relocation (last mounted at {})", last.display())
+        }
+        Some(_) => "up to date".to_string(),
+        None => "never activated on this machine".to_string(),
+    };
+    println!("  relocation: {reloc} ({} indexed file(s))", idx.entries.len());
+
+    if m.packages.is_empty() {
+        println!("  packages: (none)");
+    } else {
+        println!("  packages:");
+        for p in &m.packages {
+            println!("    {} {} — {}", p.name, p.version, p.source);
+        }
+    }
+
+    if !m.tools.is_empty() {
+        println!("  tools:");
+        for (tname, tool) in &m.tools {
+            let args = if tool.args.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", tool.args.join(" "))
+            };
+            println!("    {tname}: {}{args}", tool.run);
+        }
+    }
+
+    if !m.activation.is_empty() {
+        println!("  activation:");
+        for (os, block) in &m.activation {
+            println!(
+                "    [{os}] {} path add(s), {} env var(s)",
+                block.path_prepend.len(),
+                block.env.len()
+            );
+        }
+    }
     Ok(())
 }
 

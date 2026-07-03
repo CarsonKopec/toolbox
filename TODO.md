@@ -39,3 +39,25 @@ supervise long-running services. All three sit on the declarative-tools substrat
 - [x] **Real registry auth** — pull and push source credentials from the Docker config (`~/.docker/config.json` / `$DOCKER_CONFIG`): `auths` (base64 or plain) and credential helpers (`credHelpers`/`credsStore`). `TOOLBOX_REGISTRY_*` env vars override; anonymous fallback. So `docker login` just works.
 - [x] **README + packaging guide** — `README.md` (overview, install, quickstart, command reference) and `docs/GUIDE.md` (day-to-day walkthrough + packaging). Published with the v0.1.0 GitHub release.
 - [x] **`update` command** — `toolbox update [pkg] -e <env>` re-installs one or all packages from their recorded source (`file://` dir or registry ref)
+
+## Real gaps — make the tool feel complete
+
+- [x] **`remove` an env** — `toolbox remove <env>` deletes the env directory *and* unregisters it, refusing to delete a directory that isn't a toolbox env (no manifest).
+- [x] **`info <env>`** — one view of an env: version, mount path, relocation status, packages, tools, and an activation summary.
+- [ ] **Document the relocation/packaging reality** — relocation is clean for text files (shebangs, scripts) and length-bounded binary slots, but making a *compiled* binary relocatable needs the `__TOOLBOX_PREFIX__` sentinel baked in at build time, with the new path fitting the original slot. The guide explains pushing but not what actually makes a binary relocatable. Document the practical guidance (prefer relative paths / env vars; sentinel is for unavoidable absolute paths) so expectations are honest. _(small–medium)_
+- [ ] **`update` should prune** — it currently overlays the new version but doesn't remove files that disappeared between versions. Make it uninstall-then-reinstall (or diff the file lists). _(small–medium)_
+
+## Release polish — before cutting v0.1.1
+
+- [ ] **`CHANGELOG.md`** — none yet. _(small)_
+- [ ] **Lint in CI** — run `cargo fmt --check` and `cargo clippy -D warnings`; fix whatever they flag (deliberately skipped on the first CI run to avoid red). _(small–medium)_
+- [ ] **Smoke-test release binaries** — CI builds per-OS binaries but never runs even `--version` on them. _(small)_
+- [ ] **Dedupe integration-test helpers** — `toolbox()` / `run()` are copy-pasted across 8 test files; extract a `tests/common/mod.rs`. _(small)_
+- [ ] **Bump `actions/checkout@v4` → `@v5`** — silences the Node-20 deprecation warning. _(trivial)_
+
+## Big / deferred
+
+- [ ] **Phase 3 — Long-running services** (see Tool runtime above). _(large)_
+- [ ] **Artifact signing** (cosign/sigstore) — trust for packages pulled from public registries. _(medium–large, 1.0+)_
+- [ ] **Cross-platform exec bit** — building a Linux/macOS package on Windows loses the `+x` bit on its binaries. _(medium)_
+- [ ] **Phase 2 "emit events"** — the resolve half (`which`) is done; structured event emission from tools is the other half, if ever wanted. _(medium)_
