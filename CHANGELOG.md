@@ -7,7 +7,8 @@ All notable changes to ToolBox are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Background services — `toolbox start` / `stop` / `status` / `logs` run a declared tool detached, stream its output to a log, and track state under `<install_root>/run`. (Auto-restart supervision is planned as a follow-up.)
+- Background services — `toolbox start` / `stop` / `status` / `logs` run a declared tool detached, stream its output to a log, and track state under `<install_root>/run`.
+- Service restart supervision — a tool's `restart` policy (`no` / `on-failure` / `always`) is enforced by a per-service supervisor that respawns the process with backoff; set it with `config add-tool --restart`.
 
 ## [0.1.1] - 2026-06-29
 

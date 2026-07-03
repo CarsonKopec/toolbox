@@ -116,6 +116,9 @@ pub enum Command {
     /// (internal) Sleep for the given milliseconds — used to test services.
     #[command(name = "__sleep", hide = true)]
     Sleep { millis: u64 },
+    /// (internal) Supervise a service: run it, restarting per its policy.
+    #[command(name = "__supervise", hide = true)]
+    Supervise { env: String, tool: String },
     /// Verify env integrity and check whether relocation is needed.
     Verify { name: String },
     /// Patch a registered env's files to match its current mount path.
@@ -201,6 +204,9 @@ pub enum ConfigAction {
         /// An extra env var as KEY=VALUE (repeatable).
         #[arg(long = "env-var")]
         env_vars: Vec<String>,
+        /// Restart policy when run as a service: no | on-failure | always.
+        #[arg(long)]
+        restart: Option<String>,
     },
     /// Remove a declared tool.
     RemoveTool { env: String, name: String },

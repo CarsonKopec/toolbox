@@ -29,6 +29,42 @@ pub struct Manifest {
     pub tools: BTreeMap<String, Tool>,
 }
 
+/// When a background service's process exits, whether the supervisor respawns it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RestartPolicy {
+    /// Run once; do not restart.
+    #[default]
+    No,
+    /// Restart only if the process exited with a non-zero status.
+    OnFailure,
+    /// Always restart.
+    Always,
+}
+
+impl RestartPolicy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RestartPolicy::No => "no",
+            RestartPolicy::OnFailure => "on-failure",
+            RestartPolicy::Always => "always",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "no" => Some(RestartPolicy::No),
+            "on-failure" => Some(RestartPolicy::OnFailure),
+            "always" => Some(RestartPolicy::Always),
+            _ => None,
+        }
+    }
+
+    fn is_no(&self) -> bool {
+        matches!(self, RestartPolicy::No)
+    }
+}
+
 /// A declared, runnable tool. `run`, `args`, and `env` values are render-time
 /// templates (see `activation_vars`): they may use `$TOOLBOX_PREFIX` and
 /// `$ENV.VAR ?? fallback`. Serde derives are for the OCI package config blob.
@@ -43,6 +79,9 @@ pub struct Tool {
     /// Extra environment variables, layered on top of activation.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+    /// Restart policy when run as a background service (`start`).
+    #[serde(default, skip_serializing_if = "RestartPolicy::is_no")]
+    pub restart: RestartPolicy,
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +237,12 @@ impl Manifest {
                         .collect();
                     t.insert("env".into(), Value::Dict(env));
                 }
+                if tool.restart != RestartPolicy::No {
+                    t.insert(
+                        "restart".into(),
+                        Value::String(tool.restart.as_str().to_string()),
+                    );
+                }
                 tools.insert(tname.clone(), Value::Dict(t));
             }
             doc.config.insert("tools".into(), Value::Dict(tools));
@@ -324,6 +369,17 @@ impl Manifest {
                         tool.env.insert(k.clone(), v.to_string());
                     }
                 }
+                if let Some(r) = t.get("restart") {
+                    let s = r.as_str().ok_or_else(|| {
+                        anyhow!("{}: tools.{tname}.restart must be a string", path.display())
+                    })?;
+                    tool.restart = RestartPolicy::parse(s).ok_or_else(|| {
+                        anyhow!(
+                            "{}: tools.{tname}.restart '{s}' must be no | on-failure | always",
+                            path.display()
+                        )
+                    })?;
+                }
                 tools.insert(tname.clone(), tool);
             }
         }
@@ -392,6 +448,7 @@ mod tests {
                 run: "python".into(),
                 args: vec!["$TOOLBOX_PREFIX/share/scripts/fmt.py".into()],
                 env: BTreeMap::new(),
+                restart: RestartPolicy::default(),
             },
         );
         Manifest {

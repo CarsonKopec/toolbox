@@ -71,3 +71,55 @@ fn service_start_status_stop() {
         "service should be stopped: {after}"
     );
 }
+
+#[test]
+fn service_restart_always_respawns() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let env_dir = tmp.path().join("env");
+    let exe = env!("CARGO_BIN_EXE_toolbox");
+
+    run(toolbox(&home).args(["init", env_dir.to_str().unwrap(), "--name", "dev"]));
+    run(toolbox(&home).args(["register", env_dir.to_str().unwrap()]));
+    // A tool that exits every 300ms, with restart=always.
+    run(toolbox(&home).args([
+        "config",
+        "add-tool",
+        "dev",
+        "flaky",
+        "--run",
+        exe,
+        "--arg",
+        "__sleep",
+        "--arg",
+        "300",
+        "--restart",
+        "always",
+    ]));
+
+    toolbox(&home)
+        .args(["start", "dev", "flaky"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("spawn start");
+
+    // After more than one child lifetime, the supervisor should still be alive
+    // (it keeps respawning), and the log should record restarts.
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    let status = run(toolbox(&home).args(["status", "dev"]));
+    assert!(
+        status.contains("running"),
+        "restart=always service should still be running: {status}"
+    );
+    let logs = run(toolbox(&home).args(["logs", "dev", "flaky"]));
+    assert!(
+        logs.contains("restarting"),
+        "log should show restarts: {logs}"
+    );
+
+    run(toolbox(&home).args(["stop", "dev", "flaky"]));
+    let after = run(toolbox(&home).args(["status", "dev"]));
+    assert!(!after.contains("running"), "should be stopped: {after}");
+}

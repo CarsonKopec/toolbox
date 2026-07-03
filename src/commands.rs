@@ -39,6 +39,7 @@ pub fn dispatch(cmd: Command) -> Result<()> {
         Command::Stop { env, tool } => stop_service(&env, &tool),
         Command::Status { env } => status_services(&env),
         Command::Logs { env, tool, lines } => logs_service(&env, &tool, lines),
+        Command::Supervise { env, tool } => supervise(&env, &tool),
         Command::Sleep { millis } => {
             std::thread::sleep(std::time::Duration::from_millis(millis));
             Ok(())
@@ -502,7 +503,8 @@ fn config_dispatch(action: ConfigAction) -> Result<()> {
             run,
             args,
             env_vars,
-        } => config_add_tool(&env, &name, &run, &args, &env_vars),
+            restart,
+        } => config_add_tool(&env, &name, &run, &args, &env_vars, restart.as_deref()),
         ConfigAction::RemoveTool { env, name } => config_remove_tool(&env, &name),
         ConfigAction::Show { env } => config_show(&env),
     }
@@ -582,6 +584,7 @@ fn config_add_tool(
     run: &str,
     args: &[String],
     env_vars: &[String],
+    restart: Option<&str>,
 ) -> Result<()> {
     let env = load_registered_env(name)?;
     let mut tool_env = std::collections::BTreeMap::new();
@@ -591,6 +594,11 @@ fn config_add_tool(
             .ok_or_else(|| anyhow!("--env-var must be KEY=VALUE, got '{kv}'"))?;
         tool_env.insert(k.to_string(), v.to_string());
     }
+    let restart = match restart {
+        Some(s) => crate::manifest::RestartPolicy::parse(s)
+            .ok_or_else(|| anyhow!("--restart '{s}' must be no | on-failure | always"))?,
+        None => crate::manifest::RestartPolicy::default(),
+    };
     let mut manifest = env.manifest.clone();
     manifest.tools.insert(
         tool_name.to_string(),
@@ -598,6 +606,7 @@ fn config_add_tool(
             run: run.to_string(),
             args: args.to_vec(),
             env: tool_env,
+            restart,
         },
     );
     manifest.save(&env.root)?;
@@ -643,7 +652,7 @@ fn config_show(name: &str) -> Result<()> {
             } else {
                 format!(" {}", tool.args.join(" "))
             };
-            println!("  {tname}: {}{args}", tool.run);
+            println!("  {tname}: {}{args}{}", tool.run, restart_suffix(tool));
             for (k, v) in &tool.env {
                 println!("    env: {k} = {v}");
             }
@@ -733,7 +742,7 @@ fn info(name: &str) -> Result<()> {
             } else {
                 format!(" {}", tool.args.join(" "))
             };
-            println!("    {tname}: {}{args}", tool.run);
+            println!("    {tname}: {}{args}{}", tool.run, restart_suffix(tool));
         }
     }
 
@@ -920,6 +929,15 @@ fn resolve_tool_program(env: &Env, run: &str) -> Result<std::path::PathBuf> {
 /// Build a `Command` for a declared tool: resolved program, template-resolved
 /// declared args, activation env, then the tool's own env on top. No stdio or
 /// caller args are set — the caller decides those.
+/// ` [restart: <policy>]` suffix for tool listings, or empty for the default.
+fn restart_suffix(tool: &crate::manifest::Tool) -> String {
+    if tool.restart == crate::manifest::RestartPolicy::No {
+        String::new()
+    } else {
+        format!(" [restart: {}]", tool.restart.as_str())
+    }
+}
+
 fn build_tool_command(env: &Env, spec: &crate::manifest::Tool) -> Result<std::process::Command> {
     let program = resolve_tool_program(env, &spec.run)?;
     let mut command = std::process::Command::new(&program);
@@ -937,9 +955,11 @@ fn start_service(env_name: &str, tool: &str) -> Result<()> {
     use crate::service::ServiceState;
 
     let env = load_registered_env(env_name)?;
-    let spec = env.manifest.tools.get(tool).ok_or_else(|| {
-        anyhow!("no tool '{tool}' declared in env '{env_name}'; declare one with `config add-tool`")
-    })?;
+    if !env.manifest.tools.contains_key(tool) {
+        anyhow::bail!(
+            "no tool '{tool}' declared in env '{env_name}'; declare one with `config add-tool`"
+        );
+    }
 
     // Refuse to start a second copy of an already-running service.
     if let Some(existing) = ServiceState::load(env_name, tool)? {
@@ -951,15 +971,17 @@ fn start_service(env_name: &str, tool: &str) -> Result<()> {
         }
     }
 
-    auto_relocate(&env.root)?;
-    let mut command = build_tool_command(&env, spec)?;
-
-    // Stream the service's output to a log file.
+    // Fresh log, then launch a detached supervisor that runs the tool and
+    // restarts it per its policy. The supervisor's own output goes to the log.
     let log = ServiceState::log_path(env_name, tool)?;
     if let Some(parent) = log.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let out = std::fs::File::create(&log).with_context(|| format!("creating {}", log.display()))?;
+
+    let exe = std::env::current_exe().context("locating the toolbox binary")?;
+    let mut command = std::process::Command::new(exe);
+    command.args(["__supervise", env_name, tool]);
     command.stdin(std::process::Stdio::null());
     command.stdout(std::process::Stdio::from(out.try_clone()?));
     command.stderr(std::process::Stdio::from(out));
@@ -979,6 +1001,56 @@ fn start_service(env_name: &str, tool: &str) -> Result<()> {
 
     println!("Started service '{tool}' in '{env_name}' (pid {pid})");
     Ok(())
+}
+
+/// Internal supervisor loop (behind `__supervise`): run the tool, then restart
+/// it per its policy with a capped backoff. Runs until the policy says stop or
+/// the process group is killed by `stop`. Output goes to this process's stdio,
+/// which `start` pointed at the service's log.
+fn supervise(env_name: &str, tool: &str) -> Result<()> {
+    let env = load_registered_env(env_name)?;
+    let spec = env
+        .manifest
+        .tools
+        .get(tool)
+        .ok_or_else(|| anyhow!("no tool '{tool}' declared in env '{env_name}'"))?
+        .clone();
+
+    let mut attempt: u32 = 0;
+    loop {
+        let mut command = build_tool_command(&env, &spec)?;
+        command.stdin(std::process::Stdio::null());
+        // Inherit the supervisor's stdout/stderr (the service log).
+        let status = command
+            .status()
+            .with_context(|| format!("running service '{tool}'"))?;
+
+        let restart = match spec.restart {
+            crate::manifest::RestartPolicy::No => false,
+            crate::manifest::RestartPolicy::OnFailure => !status.success(),
+            crate::manifest::RestartPolicy::Always => true,
+        };
+        eprintln!(
+            "[toolbox] service '{tool}' exited ({}); {}",
+            status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "signal".into()),
+            if restart {
+                "restarting"
+            } else {
+                "not restarting"
+            }
+        );
+        if !restart {
+            return Ok(());
+        }
+
+        attempt += 1;
+        // Backoff: 200ms, 400ms, ... capped at 5s.
+        let ms = (200u64 << attempt.saturating_sub(1).min(5)).min(5000);
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    }
 }
 
 fn stop_service(env_name: &str, tool: &str) -> Result<()> {
