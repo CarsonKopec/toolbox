@@ -35,6 +35,14 @@ pub fn dispatch(cmd: Command) -> Result<()> {
         Command::Deactivate { shell } => deactivate_cmd(&shell),
         Command::Run { name, cmd, args } => run_cmd(&name, &cmd, &args),
         Command::Which { name, env } => which(&name, env.as_deref()),
+        Command::Start { env, tool } => start_service(&env, &tool),
+        Command::Stop { env, tool } => stop_service(&env, &tool),
+        Command::Status { env } => status_services(&env),
+        Command::Logs { env, tool, lines } => logs_service(&env, &tool, lines),
+        Command::Sleep { millis } => {
+            std::thread::sleep(std::time::Duration::from_millis(millis));
+            Ok(())
+        }
         Command::Verify { name } => verify(&name),
         Command::Relocate { name } => relocate_cmd(&name),
         Command::PackIndex { path } => pack_index(&path),
@@ -855,18 +863,9 @@ fn run_cmd(name: &str, cmd: &str, args: &[String]) -> Result<()> {
     auto_relocate(&env.root)?;
 
     let mut command = if let Some(spec) = env.manifest.tools.get(cmd) {
-        // Declared tool: resolve `run`, prepend its (template-resolved) args,
-        // then append the caller's args, and layer its env on top of activation.
-        let program = resolve_tool_program(&env, &spec.run)?;
-        let mut command = std::process::Command::new(&program);
-        for a in &spec.args {
-            command.arg(crate::activation_vars::resolve(a, &env.root)?);
-        }
+        // Declared tool: build its command, then append the caller's args.
+        let mut command = build_tool_command(&env, spec)?;
         command.args(args);
-        activate::apply_to_command(&env, &mut command)?;
-        for (k, v) in &spec.env {
-            command.env(k, crate::activation_vars::resolve(v, &env.root)?);
-        }
         command
     } else {
         // Not a declared tool: treat `cmd` as a program to execute.
@@ -916,6 +915,118 @@ fn resolve_tool_program(env: &Env, run: &str) -> Result<std::path::PathBuf> {
             env.manifest.name
         )
     })
+}
+
+/// Build a `Command` for a declared tool: resolved program, template-resolved
+/// declared args, activation env, then the tool's own env on top. No stdio or
+/// caller args are set — the caller decides those.
+fn build_tool_command(env: &Env, spec: &crate::manifest::Tool) -> Result<std::process::Command> {
+    let program = resolve_tool_program(env, &spec.run)?;
+    let mut command = std::process::Command::new(&program);
+    for a in &spec.args {
+        command.arg(crate::activation_vars::resolve(a, &env.root)?);
+    }
+    activate::apply_to_command(env, &mut command)?;
+    for (k, v) in &spec.env {
+        command.env(k, crate::activation_vars::resolve(v, &env.root)?);
+    }
+    Ok(command)
+}
+
+fn start_service(env_name: &str, tool: &str) -> Result<()> {
+    use crate::service::ServiceState;
+
+    let env = load_registered_env(env_name)?;
+    let spec = env.manifest.tools.get(tool).ok_or_else(|| {
+        anyhow!("no tool '{tool}' declared in env '{env_name}'; declare one with `config add-tool`")
+    })?;
+
+    // Refuse to start a second copy of an already-running service.
+    if let Some(existing) = ServiceState::load(env_name, tool)? {
+        if crate::service::is_alive(existing.pid) {
+            anyhow::bail!(
+                "service '{tool}' is already running in '{env_name}' (pid {})",
+                existing.pid
+            );
+        }
+    }
+
+    auto_relocate(&env.root)?;
+    let mut command = build_tool_command(&env, spec)?;
+
+    // Stream the service's output to a log file.
+    let log = ServiceState::log_path(env_name, tool)?;
+    if let Some(parent) = log.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let out = std::fs::File::create(&log).with_context(|| format!("creating {}", log.display()))?;
+    command.stdin(std::process::Stdio::null());
+    command.stdout(std::process::Stdio::from(out.try_clone()?));
+    command.stderr(std::process::Stdio::from(out));
+
+    let child = crate::service::spawn_detached(&mut command)
+        .with_context(|| format!("starting service '{tool}'"))?;
+    let pid = child.id();
+
+    ServiceState {
+        env: env_name.to_string(),
+        tool: tool.to_string(),
+        pid,
+        log,
+        started_at: crate::service::now_secs(),
+    }
+    .save()?;
+
+    println!("Started service '{tool}' in '{env_name}' (pid {pid})");
+    Ok(())
+}
+
+fn stop_service(env_name: &str, tool: &str) -> Result<()> {
+    use crate::service::ServiceState;
+
+    let state = ServiceState::load(env_name, tool)?
+        .ok_or_else(|| anyhow!("service '{tool}' is not running in '{env_name}'"))?;
+
+    if crate::service::is_alive(state.pid) {
+        crate::service::kill_tree(state.pid);
+        println!(
+            "Stopped service '{tool}' in '{env_name}' (pid {})",
+            state.pid
+        );
+    } else {
+        println!("Service '{tool}' was not running; cleared stale state.");
+    }
+    ServiceState::remove(env_name, tool)?;
+    Ok(())
+}
+
+fn status_services(env_name: &str) -> Result<()> {
+    use crate::service::ServiceState;
+
+    let services = ServiceState::all_for_env(env_name)?;
+    if services.is_empty() {
+        println!("No services in '{env_name}'.");
+        return Ok(());
+    }
+    println!("{:<20} {:<9} {:<8} PID", "SERVICE", "STATUS", "UPTIME");
+    for s in services {
+        let (status, uptime) = if crate::service::is_alive(s.pid) {
+            ("running", format!("{}s", s.uptime_secs()))
+        } else {
+            ("stopped", "-".to_string())
+        };
+        println!("{:<20} {:<9} {:<8} {}", s.tool, status, uptime, s.pid);
+    }
+    Ok(())
+}
+
+fn logs_service(env_name: &str, tool: &str, lines: Option<usize>) -> Result<()> {
+    let log = crate::service::ServiceState::log_path(env_name, tool)?;
+    if !log.exists() {
+        anyhow::bail!("no logs for service '{tool}' in '{env_name}' (never started?)");
+    }
+    print!("{}", crate::service::tail(&log, lines)?);
+    Ok(())
 }
 
 /// Resolve a declared tool or a program to its path within an env and print it.

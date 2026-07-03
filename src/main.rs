@@ -13,6 +13,7 @@ mod oci;
 mod paths;
 mod registry;
 mod relocate;
+mod service;
 mod tomlp;
 
 fn main() -> Result<()> {

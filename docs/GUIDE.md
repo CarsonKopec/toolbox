@@ -91,6 +91,15 @@ toolbox run dev fmt src\          # a declared tool, with your args appended
 toolbox run dev rg TODO           # a raw program in the env
 ```
 
+**Background service** — run a declared tool detached (e.g. a dev server), and manage it by name:
+
+```powershell
+toolbox start dev server       # run the 'server' tool in the background
+toolbox status dev             # list services with running/stopped + uptime
+toolbox logs dev server --lines 50   # its captured output
+toolbox stop dev server        # stop it (and its child processes)
+```
+
 `toolbox list` shows your envs and whether each is intact.
 
 ## 5. Portability — the payoff
@@ -172,3 +181,4 @@ ToolBox's manifests and registry are written in [TOML+](https://github.com/Carso
 - **`toolbox activate` printed a script instead of doing anything** — the shell hook isn't loaded; add the `shellenv` line to your profile (step 1) and restart the shell.
 - **A moved env's tools fail** — run `toolbox verify <env>`; if it reports drift, `toolbox activate` (or `toolbox relocate <env>`) re-patches it.
 - **Anonymous push rejected** — run `docker login <registry>` (ToolBox reuses those credentials), or set `TOOLBOX_REGISTRY_USERNAME` / `TOOLBOX_REGISTRY_PASSWORD` for a one-off. Most registries reject anonymous pushes.
+- **`toolbox start` seems to hang on Windows when piped** — e.g. `toolbox start ... | tee`. The detached service inherits the captured pipe until it exits (a Windows handle-inheritance quirk). Run `start` without piping its output; the service and its logs are unaffected.

@@ -4,6 +4,11 @@ All notable changes to ToolBox are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Background services — `toolbox start` / `stop` / `status` / `logs` run a declared tool detached, stream its output to a log, and track state under `<install_root>/run`. (Auto-restart supervision is planned as a follow-up.)
+
 ## [0.1.1] - 2026-06-29
 
 ### Added

@@ -99,6 +99,23 @@ pub enum Command {
         #[arg(short, long)]
         env: Option<String>,
     },
+    /// Start a declared tool as a background service.
+    Start { env: String, tool: String },
+    /// Stop a running background service.
+    Stop { env: String, tool: String },
+    /// Show an env's background services and their status.
+    Status { env: String },
+    /// Print a background service's captured output.
+    Logs {
+        env: String,
+        tool: String,
+        /// Show only the last N lines.
+        #[arg(long)]
+        lines: Option<usize>,
+    },
+    /// (internal) Sleep for the given milliseconds — used to test services.
+    #[command(name = "__sleep", hide = true)]
+    Sleep { millis: u64 },
     /// Verify env integrity and check whether relocation is needed.
     Verify { name: String },
     /// Patch a registered env's files to match its current mount path.

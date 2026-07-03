@@ -30,7 +30,9 @@ supervise long-running services. All three sit on the declarative-tools substrat
 
 - [x] **Phase 1 — Declarative tools.** `[tools.x]` in the manifest (`run`/`args`/`env`, template-resolved); `toolbox run <env> <tool|program> [args]` runs a declared tool or falls back to a raw program. Packages ship tools via `toolbox-package.tomlp` → OCI config blob → merged on install.
 - [x] **Phase 2 — Callback API (resolve).** `toolbox which <name>` resolves a declared tool or program to its path; env defaults to `$TOOLBOX_ACTIVE_ENV`, so a running tool can find a sibling with no `--env`. (Event emission, if ever wanted, would build on this.)
-- [ ] **Phase 3 — Long-running services.** A service is a tool with a restart policy; supervise via a per-service `toolbox __supervise` shim + state file (pid/log), no central daemon. `start`/`stop`/`status`/`logs`. Socket IPC only if live interaction is needed later. _(large)_
+- [x] **Phase 3a — Background services.** `start` / `stop` / `status` / `logs`: a declared tool runs detached, output streamed to a log, state tracked under `<install_root>/run/<env>/<tool>.json`. Cross-platform detached spawn + tree kill + liveness (no daemon).
+- [ ] **Phase 3b — Restart supervision.** A `restart` policy (`no`/`on-failure`/`always`) on a tool, supervised by a per-service `toolbox __supervise` shim that respawns per policy with backoff. _(medium)_
+- [ ] **Windows: piping `toolbox start`'s output can block** — the detached child inherits the parent's captured stdout pipe until it exits (a Windows handle-inheritance quirk; interactive/console use is fine). A proper fix needs a `bInheritHandles=FALSE` spawn (winapi) or a launcher shim. _(small–medium)_
 
 ## Later — adoption and reach
 

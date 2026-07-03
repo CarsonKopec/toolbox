@@ -32,6 +32,11 @@ pub fn cache_dir() -> Result<PathBuf> {
     Ok(install_root()?.join("cache"))
 }
 
+/// Root for background-service runtime state (per-env state files + logs).
+pub fn run_dir() -> Result<PathBuf> {
+    Ok(install_root()?.join("run"))
+}
+
 /// Subdir within an env that holds per-OS binaries.
 pub const fn os_subdir() -> &'static str {
     #[cfg(windows)]
